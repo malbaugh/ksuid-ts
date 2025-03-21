@@ -1,285 +1,104 @@
-# ksuid [![Go Report Card](https://goreportcard.com/badge/github.com/segmentio/ksuid)](https://goreportcard.com/report/github.com/segmentio/ksuid) [![GoDoc](https://godoc.org/github.com/segmentio/ksuid?status.svg)](https://godoc.org/github.com/segmentio/ksuid) [![Circle CI](https://circleci.com/gh/segmentio/ksuid.svg?style=shield)](https://circleci.com/gh/segmentio/ksuid.svg?style=shield)
+# KSUID - K-Sortable Unique IDentifier
 
-ksuid is an efficient, comprehensive, battle-tested Go library for
-generating and parsing a specific kind of globally unique identifier
-called a *KSUID*. This library serves as its reference implementation.
+TypeScript implementation of K-Sortable Unique IDentifiers.
 
-## Install
-```sh
-go get -u github.com/segmentio/ksuid
+KSUIDs are:
+- **Sortable by creation time**: The first 4 bytes are a timestamp
+- **Contain 16 random bytes**: Unlike UUID v1/v2, they don't expose the MAC address
+- **URL safe representation**: Base62 encoded into a 27 character string
+
+## Installation
+
+```bash
+npm install ksuid
 ```
 
-## What is a KSUID?
+## Usage
 
-KSUID is for K-Sortable Unique IDentifier. It is a kind of globally
-unique identifier similar to a [RFC 4122 UUID](https://en.wikipedia.org/wiki/Universally_unique_identifier), built from the ground-up to be "naturally"
-sorted by generation timestamp without any special type-aware logic.
+### Basic Usage
 
-In short, running a set of KSUIDs through the UNIX `sort` command will result
-in a list ordered by generation time.
+```typescript
+import { KSUID } from 'ksuid';
 
-## Why use KSUIDs?
+// Generate a new KSUID
+const id = KSUID.new();
 
-There are numerous methods for generating unique identifiers, so why KSUID?
+// Get the string representation
+console.log(id.toString());
+// Output: something like "1BoZGMuixPtHRHwvkZxHEkfLxL4"
 
-1. Naturally ordered by generation time
-2. Collision-free, coordination-free, dependency-free
-3. Highly portable representations
+// Get the raw bytes
+const bytes = id.getBytes();
 
-Even if only one of these properties are important to you, KSUID is a great
-choice! :) Many projects chose to use KSUIDs *just* because the text
-representation is copy-and-paste friendly.
+// Get the timestamp portion
+const timestamp = id.getTimestamp();
+const date = id.getTime();
 
-For a follow up read on the topic: [A brief history of UUID](https://segment.com/blog/a-brief-history-of-the-uuid/)
+// Parse an existing KSUID from string
+const parsed = KSUID.parse("1BoZGMuixPtHRHwvkZxHEkfLxL4");
 
-### 1. Naturally Ordered By Generation Time
+// Compare KSUIDs
+if (id.compare(parsed) === 0) {
+  console.log("KSUIDs are equal");
+}
 
-Unlike the more ubiquitous UUIDv4, a KSUID contains a timestamp component
-that allows them to be loosely sorted by generation time. This is not a strong
-guarantee (an invariant) as it depends on wall clocks, but is still incredibly
-useful in practice. Both the binary and text representations will sort by
-creation time without any special sorting logic.
+// Sort KSUIDs
+const ids = [KSUID.new(), KSUID.new(), KSUID.new()];
+KSUID.sort(ids);
+```
 
-### 2. Collision-free, Coordination-free, Dependency-free
+### Sequences
 
-While RFC 4122 UUIDv1s *do* include a time component, there aren't enough
-bytes of randomness to provide strong protection against collisions
-(duplicates). With such a low amount of entropy, it is feasible for a
-malicious party to guess generated IDs, creating a problem for systems whose
-security is, implicitly or explicitly, sensitive to an adversary guessing
-identifiers.
+Generate a sequence of KSUIDs from a seed:
 
-To fit into a 64-bit number space, [Snowflake IDs](https://blog.twitter.com/2010/announcing-snowflake)
-and its derivatives require coordination to avoid collisions, which
-significantly increases the deployment complexity and operational burden.
+```typescript
+import { KSUID, Sequence } from 'ksuid';
 
-A KSUID includes 128 bits of pseudorandom data ("entropy"). This number space
-is 64 times larger than the 122 bits used by the well-accepted RFC 4122 UUIDv4
-standard. The additional timestamp component can be considered "bonus entropy"
-which further decreases the probability of collisions, to the point of physical
-infeasibility in any practical implementation.
+// Create a sequence with a random seed
+const sequence = new Sequence();
 
-### 3. Highly Portable Representations
+// Or create a sequence with a specific seed
+const seed = KSUID.new();
+const customSequence = new Sequence({ seed });
 
-The text *and* binary representations are lexicographically sortable, which
-allows them to be dropped into systems which do not natively support KSUIDs
-and retain their time-ordered property.
+// Generate up to 65536 KSUIDs from this seed
+const id1 = sequence.next();
+const id2 = sequence.next();
+// ...
 
-The text representation is an alphanumeric base62 encoding, so it "fits"
-anywhere alphanumeric strings are accepted. No delimiters are used, so
-stringified KSUIDs won't be inadvertently truncated or tokenized when
-interpreted by software that is designed for human-readable text, a common
-problem for the text representation of RFC 4122 UUIDs.
-
-## How do KSUIDs work?
-
-Binary KSUIDs are 20-bytes: a 32-bit unsigned integer UTC timestamp and
-a 128-bit randomly generated payload. The timestamp uses big-endian
-encoding, to support lexicographic sorting. The timestamp epoch is adjusted
-to May 13th, 2014, providing over 100 years of life. The payload is
-generated by a cryptographically-strong pseudorandom number generator.
-
-The text representation is always 27 characters, encoded in alphanumeric
-base62 that will lexicographically sort by timestamp.
-
-## High Performance
-
-This library is designed to be used in code paths that are performance
-critical. Its code has been tuned to eliminate all non-essential
-overhead. The `KSUID` type is derived from a fixed-size array, which
-eliminates the additional reference chasing and allocation involved in
-a variable-width type.
-
-The API provides an interface for use in code paths which are sensitive
-to allocation. For example, the `Append` method can be used to parse the
-text representation and replace the contents of a `KSUID` value
-without additional heap allocation.
-
-All public package level "pure" functions are concurrency-safe, protected
-by a global mutex. For hot loops that generate a large amount of KSUIDs
-from a single Goroutine, the `Sequence` type is provided to elide the
-potential contention.
-
-By default, out of an abundance of caution, the cryptographically-secure
-PRNG is used to generate the random bits of a KSUID. This can be relaxed
-in extremely performance-critical code using the included `FastRander`
-type. `FastRander` uses the standard PRNG with a seed generated by the
-cryptographically-secure PRNG.
-
-*_NOTE:_ While there is no evidence that `FastRander` will increase the
-probability of a collision, it shouldn't be used in scenarios where
-uniqueness is important to security, as there is an increased chance
-the generated IDs can be predicted by an adversary.*
-
-## Battle Tested
-
-This code has been used in production at Segment for several years,
-across a diverse array of projects. Trillions upon trillions of
-KSUIDs have been generated in some of Segment's most
-performance-critical, large-scale distributed systems.
-
-## Plays Well With Others
-
-Designed to be integrated with other libraries, the `KSUID` type
-implements many standard library interfaces, including:
-
-* `Stringer`
-* `database/sql.Scanner` and `database/sql/driver.Valuer`
-* `encoding.BinaryMarshal` and `encoding.BinaryUnmarshal`
-* `encoding.TextMarshal` and `encoding.TextUnmarshal`
-  (`encoding/json` friendly!)
+// Get the bounds of possible IDs
+const { min, max } = sequence.bounds();
+```
 
 ## Command Line Tool
 
-This package comes with a command-line tool `ksuid`, useful for
-generating KSUIDs as well as inspecting the internal components of
-existing KSUIDs. Machine-friendly output is provided for scripting
-use cases.
+This package includes a CLI tool for generating and inspecting KSUIDs.
 
-Given a Go build environment, it can be installed with the command:
+```bash
+# Install globally
+npm install -g ksuid
 
-```sh
-$ go install github.com/segmentio/ksuid/cmd/ksuid
+# Generate a new KSUID
+ksuid
+
+# Generate multiple KSUIDs
+ksuid -n 5
+
+# Inspect a KSUID
+ksuid -f inspect 1BoZGMuixPtHRHwvkZxHEkfLxL4
+
+# See all options
+ksuid --help
 ```
 
-## CLI Usage Examples
+## How KSUIDs Work
 
-### Generate a KSUID
+Each KSUID is a 20-byte value:
+- First 4 bytes: 32-bit unsigned integer timestamp with custom epoch (seconds since 2014-05-13)
+- Last 16 bytes: Random bytes
 
-```sh
-$ ksuid
-0ujsswThIGTUYm2K8FjOOfXtY1K
-```
-
-### Generate 4 KSUIDs
-
-```sh
-$ ksuid -n 4
-0ujsszwN8NRY24YaXiTIE2VWDTS
-0ujsswThIGTUYm2K8FjOOfXtY1K
-0ujssxh0cECutqzMgbtXSGnjorm
-0ujsszgFvbiEr7CDgE3z8MAUPFt
-```
-
-### Inspect the components of a KSUID
-
-```sh
-$ ksuid -f inspect 0ujtsYcgvSTl8PAuAdqWYSMnLOv
-
-REPRESENTATION:
-
-  String: 0ujtsYcgvSTl8PAuAdqWYSMnLOv
-     Raw: 0669F7EFB5A1CD34B5F99D1154FB6853345C9735
-
-COMPONENTS:
-
-       Time: 2017-10-09 21:00:47 -0700 PDT
-  Timestamp: 107608047
-    Payload: B5A1CD34B5F99D1154FB6853345C9735
-```
-
-### Generate a KSUID and inspect its components
-
-```sh
-$ ksuid -f inspect
-
-REPRESENTATION:
-
-  String: 0ujzPyRiIAffKhBux4PvQdDqMHY
-     Raw: 066A029C73FC1AA3B2446246D6E89FCD909E8FE8
-
-COMPONENTS:
-
-       Time: 2017-10-09 21:46:20 -0700 PDT
-  Timestamp: 107610780
-    Payload: 73FC1AA3B2446246D6E89FCD909E8FE8
-
-```
-
-### Inspect a KSUID with template formatted inspection output
-
-```sh
-$ ksuid -f template -t '{{ .Time }}: {{ .Payload }}' 0ujtsYcgvSTl8PAuAdqWYSMnLOv
-2017-10-09 21:00:47 -0700 PDT: B5A1CD34B5F99D1154FB6853345C9735
-```
-
-### Inspect multiple KSUIDs with template formatted output
-
-```sh
-$ ksuid -f template -t '{{ .Time }}: {{ .Payload }}' $(ksuid -n 4)
-2017-10-09 21:05:37 -0700 PDT: 304102BC687E087CC3A811F21D113CCF
-2017-10-09 21:05:37 -0700 PDT: EAF0B240A9BFA55E079D887120D962F0
-2017-10-09 21:05:37 -0700 PDT: DF0761769909ABB0C7BB9D66F79FC041
-2017-10-09 21:05:37 -0700 PDT: 1A8F0E3D0BDEB84A5FAD702876F46543
-```
-
-### Generate KSUIDs and output JSON using template formatting
-
-```sh
-$ ksuid -f template -t '{ "timestamp": "{{ .Timestamp }}", "payload": "{{ .Payload }}", "ksuid": "{{.String}}"}' -n 4
-{ "timestamp": "107611700", "payload": "9850EEEC191BF4FF26F99315CE43B0C8", "ksuid": "0uk1Hbc9dQ9pxyTqJ93IUrfhdGq"}
-{ "timestamp": "107611700", "payload": "CC55072555316F45B8CA2D2979D3ED0A", "ksuid": "0uk1HdCJ6hUZKDgcxhpJwUl5ZEI"}
-{ "timestamp": "107611700", "payload": "BA1C205D6177F0992D15EE606AE32238", "ksuid": "0uk1HcdvF0p8C20KtTfdRSB9XIm"}
-{ "timestamp": "107611700", "payload": "67517BA309EA62AE7991B27BB6F2FCAC", "ksuid": "0uk1Ha7hGJ1Q9Xbnkt0yZgNwg3g"}
-```
-
-## OrNil functions
-
-There are times when you are sure your ksuid is correct. But you need to get it from bytes or string and pass it
-it's to the structure. For this, there are OrNil functions that return ksuid.Nil on error and can be called 
-directly in the structure.
-
-**Functions:**
-- `ParseOrNil()`
-- `FromPartsOrNil()`
-- `FromBytesOrNil()`
-
-An example of using the function without OrNil:
-```go
-func getPosts(before, after []byte) {
-	b, err := ksuid.FromBytes(before)
-	if err != nil {
-		// handle error
-	}
-
-	a, err := ksuid.FromBytes(after)
-	if err != nil {
-		// handle error
-	}
-
-	sortOptions := SortOptions{Before: b, After: a}
-}
-```
-
-It is much more convenient to do it like this:
-
-```go
-func getPosts(before, after []byte) {
-	sortOptions := SortOptions{
-		Before: ksuid.FromBytesOrNil(before),
-		After:  ksuid.FromBytesOrNil(after),
-	}
-}
-```
-
-OrNil functions are also used in many other libraries:
-
-- [satori/go.uuid](https://github.com/satori/go.uuid)
-- [oklog/ulid](https://github.com/oklog/ulid) (panic)
-
-## Implementations for other languages
-
-- Python: [svix-ksuid](https://github.com/svixhq/python-ksuid/)
-- Python: [cyksuid](https://github.com/timonwong/cyksuid)
-- Ruby: [ksuid-ruby](https://github.com/michaelherold/ksuid-ruby)
-- Java: [ksuid](https://github.com/ksuid/ksuid)
-- Java: [ksuid-creator](https://github.com/f4b6a3/ksuid-creator)
-- Rust: [svix-ksuid](https://github.com/svix/rust-ksuid)
-- dotNet: [Ksuid.Net](https://github.com/JoyMoe/Ksuid.Net)
-- dotnet: [KsuidDotNet](https://github.com/steve-warren/ksuid)
-- Erlang: [erl-ksuid](https://github.com/exograd/erl-ksuid)
-- Zig: [zig-ksuid](https://github.com/toffaletti/zig-ksuid)
+When string-encoded, KSUIDs are base62 encoded into a 27-character string.
 
 ## License
 
-ksuid source code is available under an MIT [License](/LICENSE.md).
+MIT

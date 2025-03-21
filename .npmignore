@@ -1,0 +1,27 @@
+# Source files
+src/
+examples/
+tests/
+
+# Node.js files
+node_modules/
+
+# Configuration files
+tsconfig.json
+jest.config.js
+.eslintrc.json
+.prettierrc
+
+# Git files
+.git/
+.gitignore
+
+# Editor specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log* 
